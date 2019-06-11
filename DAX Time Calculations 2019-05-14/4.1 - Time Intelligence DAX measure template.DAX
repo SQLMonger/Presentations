@@ -767,10 +767,10 @@ MINX (
 Cumulative <Measure> =
 IF (
     MIN ( '<DATE TABLE>'[DateKey] )
-        <= CALCULATE ( MAX ( ='<Transaction Table>'[DateKey] ), 
+        <= CALCULATE ( MAX ( ='<FactTable>'[DateKey] ), 
             ALL ( '<Transaction Table>' ) ),
     CALCULATE (
-        SUM ( '<Transaction Table>'[<Measure>] ),
+        SUM ( '<FactTable>'[<Measure>] ),
         FILTER (
             ALL ( '<DATE TABLE>'[Date] ),
             '<DATE TABLE>'[Date] <= MAX ( '<DATE TABLE>'[Date] )
@@ -780,7 +780,7 @@ IF (
  
 Cumulative <Measure> Unchecked =
 CALCULATE (
-    SUM ( '<Transaction Table>'[<Measure>] ),
+    SUM ( '<FactTable>'[<Measure>] ),
     FILTER (
         ALL ( '<DATE TABLE>'[Date] ),
         '<DATE TABLE>'[Date] <= MAX ( '<DATE TABLE>'[Date] )
@@ -811,7 +811,7 @@ CALCULATE (
 )
 
 <Measure> Months12M = CALCULATE (
-    CALCULATE ( COUNTROWS ( VALUES ( '<DATE TABLE>'[Month Abbv] ) ), 'FactTable' ),
+    CALCULATE ( COUNTROWS ( VALUES ( '<DATE TABLE>'[Month Abbv] ) ), '<FactTable>' ),
     DATESBETWEEN (
         '<DATE TABLE>'[Date],
         NEXTDAY ( SAMEPERIODLASTYEAR (LASTDATE ( '<DATE TABLE>'[Date] ) ) ),
@@ -824,7 +824,7 @@ CALCULATE (
 Sales 12 MMA = 
 IF(COUNTROWS(VALUES( '<DATE TABLE>'[Month])) = 1, 
     CALCULATE( 
-SUM( '<Transaction Table>'[<Measure>] ) /  COUNTROWS(  VALUES (  '<DATE TABLE>'[Month] ) )  , 
+SUM( '<FactTable>'[<Measure>] ) /  COUNTROWS(  VALUES (  '<DATE TABLE>'[Month] ) )  , 
             DATESBETWEEN( 
                  '<DATE TABLE>'[FullDateKey], 
                 FIRSTDATE(PARALLELPERIOD( '<DATE TABLE>'[FullDateKey], -11, MONTH)), 
@@ -836,7 +836,7 @@ SUM( '<Transaction Table>'[<Measure>] ) /  COUNTROWS(  VALUES (  '<DATE TABLE>'
 Sales 3 MMA = 
 IF(COUNTROWS(VALUES( '<DATE TABLE>'[Month])) = 1, 
     CALCULATE( 
-SUM( '<Transaction Table>'[<Measure>] ) /  COUNTROWS(  VALUES (  '<DATE TABLE>'[Month] ) )  , 
+SUM( '<FactTable>'[<Measure>] ) /  COUNTROWS(  VALUES (  '<DATE TABLE>'[Month] ) )  , 
             DATESBETWEEN( 
                  '<DATE TABLE>'[FullDateKey], 
                 FIRSTDATE(PARALLELPERIOD( '<DATE TABLE>'[FullDateKey], -2, MONTH)), 
