@@ -1,0 +1,886 @@
+//----------------------------------------------------------------------------
+//-- Template based on the measures from article:
+//--	https://www.daxpatterns.com/time-patterns/
+//--    https://www.sqlbi.com/articles/userelationship-in-calculated-columns/
+//--    https://dash-intel.com/powerbi/modeling_date_functions.php
+//--	Upated for Power BI syntax 
+//--	and modified to allow for Search/replace the name of:
+//--		<DATE TABLE>
+//--		<FactTable>
+//-- 			<Measure>
+//--		<SemiAdditiveFact>
+//--			<SemiAddditiveMeasure>
+//--
+//--  based on '<FactTable>'[<BaseMeasure>]
+//----------------------------------------------------------------------------
+//--  Create a calculated SUM() measure over the FactTable/BaseMeasure:
+//--	<Measure>  =  SUM('<FactTable>'[<BaseMeasure>])
+//----------------------------------------------------------------------------
+
+//  To do: Add Moving average template
+//	Period to date measures
+//	Update the Calendar Dimension M Script to have [Month Abbv] and change [Month] to [MonthName]
+
+
+//----------------------------------------------------------------------------
+// DAX Calculated columns needed in the Calendar/date dimension
+// Dependent on the generic Calendar dimension M Script for Power BI
+// Note: some of these can be accomplished im M as well. DAX version for reference
+//----------------------------------------------------------------------------
+
+YearDayNumber =
+COUNTROWS (
+    FILTER (
+        ALL ( '<DATE TABLE>' ),
+        '<DATE TABLE>'[Date] <= EARLIER ( '<DATE TABLE>'[Date] )
+            && '<DATE TABLE>'[YearNumber] = EARLIER ( '<DATE TABLE>'[YearNumber] )
+    )
+)
+
+QuarterDayNumber =
+COUNTROWS (
+    FILTER (
+        ALL ( '<DATE TABLE>' ),
+        '<DATE TABLE>'[Date] <= EARLIER ( '<DATE TABLE>'[Date] )
+            && '<DATE TABLE>'[YearNumber] = EARLIER ( '<DATE TABLE>'[YearNumber] )
+            && '<DATE TABLE>'[QuarterNumber] = EARLIER ( '<DATE TABLE>'[QuarterNumber] )
+    )
+)
+
+YearQuarterNumber =
+ ( '<DATE TABLE>'[YearNumber] - MIN ( '<DATE TABLE>'[YearNumber] ) )
+    * 4
+    + '<DATE TABLE>'[QuarterNumber]
+
+MonthDayNumber = 
+    DAY(
+        '<DATE TABLE>'[Date]
+    )
+
+YearMonthNumber =
+ ( '<DATE TABLE>'[YearNumber] - MIN ( '<DATE TABLE>'[YearNumber] ) )
+    * 12
+    + '<DATE TABLE>'[MonthNumber]
+
+PM Date =
+CALCULATE (
+    MAX  ( '<DATE TABLE>'[Date] ),
+    ALL ( '<DATE TABLE>' ),
+    FILTER (
+        ALL ( '<DATE TABLE>'[MonthDayNumber] ),
+        '<DATE TABLE>'[MonthDayNumber] <= EARLIER ( '<DATE TABLE>'[MonthDayNumber] )
+            || EARLIER ( '<DATE TABLE>'[MonthDayNumber] ) = EARLIER ( '<DATE TABLE>'[MonthDays] )
+    ),
+    FILTER (
+        ALL ( '<DATE TABLE>'[YearMonthNumber] ),
+        '<DATE TABLE>'[YearMonthNumber]
+            = EARLIER ( '<DATE TABLE>'[YearMonthNumber] ) - 1
+    )
+)
+
+PQ Date =
+CALCULATE (
+    MAX  ( '<DATE TABLE>'[Date] ),
+    ALL ( '<DATE TABLE>' ),
+    FILTER (
+        ALL ( '<DATE TABLE>'[MonthDayNumber] ),
+        '<DATE TABLE>'[MonthDayNumber] <= EARLIER ( '<DATE TABLE>'[MonthDayNumber] )
+            || EARLIER ( '<DATE TABLE>'[MonthDayNumber] ) = EARLIER ( '<DATE TABLE>'[MonthDays] )
+    ),
+    FILTER (
+        ALL ( '<DATE TABLE>'[YearMonthNumber] ),
+        '<DATE TABLE>'[YearMonthNumber]
+            = EARLIER ( '<DATE TABLE>'[YearMonthNumber] ) - 3
+    )
+)
+
+PY Date =
+CALCULATE (
+    MAX  ( '<DATE TABLE>'[Date] ),
+    ALL ( '<DATE TABLE>' ),
+    FILTER (
+        ALL ( '<DATE TABLE>'[MonthDayNumber] ),
+        '<DATE TABLE>'[MonthDayNumber] <= EARLIER ( '<DATE TABLE>'[MonthDayNumber] )
+            || EARLIER ( '<DATE TABLE>'[MonthDayNumber] ) = EARLIER ( '<DATE TABLE>'[MonthDays] )
+    ),
+    FILTER (
+        ALL ( '<DATE TABLE>'[YearMonthNumber] ),
+        '<DATE TABLE>'[YearMonthNumber]
+            = EARLIER ( '<DATE TABLE>'[YearMonthNumber] ) - 12
+    )
+)
+
+
+
+//-----------------------------------------------------------------------
+//--DAX Measure templates
+//-----------------------------------------------------------------------
+
+<Measure> YTD = CALCULATE (
+    [<Measure>],
+    FILTER (
+        ALL ( '<DATE TABLE>' ),
+        '<DATE TABLE>'[YearNumber] = MAX ( '<DATE TABLE>'[YearNumber] )
+            && '<DATE TABLE>'[Date] <= MAX ( '<DATE TABLE>'[Date] )
+    )
+)
+
+<Measure> QTD = CALCULATE (
+    [<Measure>],
+    FILTER (
+        ALL ( '<DATE TABLE>' ),
+        '<DATE TABLE>'[YearQuarterNumber] = MAX ( '<DATE TABLE>'[YearQuarterNumber] )
+            && '<DATE TABLE>'[Date] <= MAX ( '<DATE TABLE>'[Date] )
+    )
+)
+
+<Measure> MTD = CALCULATE (
+    [<Measure>],
+    FILTER (
+        ALL ( '<DATE TABLE>' ),
+        '<DATE TABLE>'[YearMonthNumber] = MAX ( '<DATE TABLE>'[YearMonthNumber] )
+            && '<DATE TABLE>'[Date] <= MAX ( '<DATE TABLE>'[Date] )
+    )
+)
+
+// Moving Annual Total
+<Measure> MAT = CALCULATE ( 
+    [<Measure>],
+    FILTER ( 
+        ALL ( '<DATE TABLE>' ),
+        '<DATE TABLE>'[SequentialDayNumber] > MAX ( '<DATE TABLE>'[SequentialDayNumber] ) - 365
+             && '<DATE TABLE>'[SequentialDayNumber] <= MAX ( '<DATE TABLE>'[SequentialDayNumber] )
+    ) 
+)
+//alternate Moving Annual total from https://dash-intel.com/powerbi/modeling_date_functions.php
+<Measure> MAT  = CALCULATE(     
+    SUM([<Measure>]),
+    DATESINPERIOD('<DATE TABLE>'[Date],LASTDATE('<DATE TABLE>'[Date]),-1,YEAR) 
+    )  
+
+//Moving Monthly total
+<Measure> MMT  = CALCULATE(     
+    SUM([<Measure>]),
+    DATESINPERIOD('<DATE TABLE>'[Date],LASTDATE('<DATE TABLE>'[Date]),-1,MONTH) 
+    )  
+ 
+
+// Prior Period Measures
+// Note: [YearMonthNumber] must be a sequntial month number, 
+// better called [SequentialMonthNumber] or
+// Add columm to calendar: YearMonthNumber = ('Calendar'[YearNumber] - MIN( 'Calendar'[YearNumber] )) * 12 + 'Calendar'[MonthNumber]
+
+<Measure> PY=
+SUMX ( 
+    VALUES ( '<DATE TABLE>'[YearMonthNumber] ), 
+    IF ( 
+        CALCULATE ( 
+            COUNTROWS ( 
+                VALUES ( '<DATE TABLE>'[Date] ) 
+            ) 
+        ) 
+            = CALCULATE ( 
+                VALUES ( '<DATE TABLE>'[MonthDays] ) 
+            ), 
+        CALCULATE ( 
+            [<Measure>], 
+            ALL ( '<DATE TABLE>' ), 
+            FILTER ( 
+                ALL ( '<DATE TABLE>'[YearMonthNumber] ), 
+                '<DATE TABLE>'[YearMonthNumber] 
+                    = EARLIER ( '<DATE TABLE>'[YearMonthNumber] ) - 12
+            ) 
+        ), 
+        CALCULATE ( 
+            [<Measure>], 
+            ALL ( '<DATE TABLE>' ), 
+            CALCULATETABLE ( 
+                VALUES ( '<DATE TABLE>'[MonthDayNumber] ) 
+            ), 
+            FILTER ( 
+                ALL ( '<DATE TABLE>'[YearMonthNumber] ), 
+                '<DATE TABLE>'[YearMonthNumber] 
+                    = EARLIER ( '<DATE TABLE>'[YearMonthNumber] ) - 12
+            ) 
+        ) 
+    ) 
+)
+//this works
+<Measure> PY =
+CALCULATE ( SUM ( [<Measure>] ), PREVIOUSYEAR ( '<DATE TABLE>'[Date] ) )
+
+
+<Measure> PQ =
+SUMX (
+    VALUES ( '<DATE TABLE>'[YearMonthNumber] ),
+    IF (
+        CALCULATE (
+            COUNTROWS (
+                VALUES ( '<DATE TABLE>'[Date] )
+            )
+        )
+            = CALCULATE (
+                VALUES ( '<DATE TABLE>'[MonthDays] )
+            ),
+        CALCULATE (
+            [<Measure>],
+            ALL ( '<DATE TABLE>' ),
+            FILTER (
+                ALL ( '<DATE TABLE>'[YearMonthNumber] ),
+                '<DATE TABLE>'[YearMonthNumber] 
+                    = EARLIER ( '<DATE TABLE>'[YearMonthNumber] ) - 3
+            )
+        ),
+        CALCULATE (
+            [<Measure>],
+            ALL ( '<DATE TABLE>' ),
+            CALCULATETABLE (
+                VALUES ( '<DATE TABLE>'[MonthDayNumber] )
+            ),
+            FILTER (
+                ALL ( '<DATE TABLE>'[YearMonthNumber] ),
+                '<DATE TABLE>'[YearMonthNumber] 
+                    = EARLIER ( '<DATE TABLE>'[YearMonthNumber] ) - 3
+            )
+        )
+    )
+)
+
+<Measure> PM = 
+SUMX (
+     VALUES ( '<DATE TABLE>'[YearMonthNumber] ),
+    IF (
+        CALCULATE (
+            COUNTROWS (
+                VALUES ( '<DATE TABLE>'[Date] )
+            )
+        )
+            = CALCULATE (
+                VALUES ( '<DATE TABLE>'[MonthDays] )
+            ),
+        CALCULATE (
+            [<Measure>],
+            ALL ( '<DATE TABLE>' ),
+            FILTER (
+                ALL ( '<DATE TABLE>'[YearMonthNumber] ),
+                '<DATE TABLE>'[YearMonthNumber] 
+                    = EARLIER ( '<DATE TABLE>'[YearMonthNumber] ) - 1
+            )
+        ),
+        CALCULATE (
+            [<Measure>],
+            ALL ( '<DATE TABLE>' ),
+            CALCULATETABLE (
+                VALUES ( '<DATE TABLE>'[MonthDayNumber] )
+            ),
+            FILTER (
+                ALL ( '<DATE TABLE>'[YearMonthNumber] ),
+                '<DATE TABLE>'[YearMonthNumber] 
+                    = EARLIER ( '<DATE TABLE>'[YearMonthNumber] ) - 1
+            )
+        )
+    )
+)
+
+// Prior Period
+<Measure> PP =
+SWITCH (
+    TRUE,
+    ISFILTERED ( '<DATE TABLE>'[Month] ), [<Measure> PM],
+    ISFILTERED ( '<DATE TABLE>'[Quarter] ), [<Measure> PQ],
+    ISFILTERED ( '<DATE TABLE>'[YearNumber] ), [<Measure> PY],
+    BLANK ()
+)
+
+<Measure> YOY = [<Measure>] - [<Measure> PY]
+
+<Measure> QOQ = [<Measure>] - [<Measure> PQ]
+
+<Measure> MOM = [<Measure>] - [<Measure> PM]
+
+<Measure> POP = [<Measure>] - [<Measure> PP]
+
+<Measure> YOY% =
+DIVIDE ( [<Measure> YOY], [<Measure> PY] )
+
+<Measure> QOQ% =
+DIVIDE ( [<Measure> QOQ], [<Measure> PQ] )
+
+<Measure> MOM%  =
+DIVIDE ( [<Measure> MOM], [<Measure> PM] )
+
+<Measure> POP% =
+DIVIDE ( [<Measure> POP], [<Measure> PP] )
+
+<Measure> PYTD = 
+CALCULATE (
+    [<Measure>],
+    FILTER (
+        ALL ( '<DATE TABLE>' ),
+        '<DATE TABLE>'[YearNumber] = MAX ( '<DATE TABLE>'[YearNumber] ) - 1
+            && '<DATE TABLE>'[Date] <= MAX ( '<DATE TABLE>'[PY Date] )
+    )
+)
+
+<Measure> PQTD = 
+CALCULATE (
+    [<Measure>],
+    FILTER (
+        ALL ( '<DATE TABLE>' ),
+        '<DATE TABLE>'[YearQuarterNumber] = MAX ( '<DATE TABLE>'[YearQuarterNumber] ) - 1
+            && '<DATE TABLE>'[Date] <= MAX ( '<DATE TABLE>'[PQ Date] )
+    )
+)
+
+<Measure> PMTD =
+CALCULATE (
+    [<Measure>],
+    FILTER (
+        ALL ( '<DATE TABLE>' ),
+        '<DATE TABLE>'[YearMonthNumber] = MAX ( '<DATE TABLE>'[YearMonthNumber] ) - 1
+            && '<DATE TABLE>'[Date] <= MAX ( '<DATE TABLE>'[PM Date] )
+    )
+)
+
+--Previous Year Moving Annual Total
+<Measure> PMAT =
+CALCULATE (
+    [<Measure>],
+    FILTER (
+        ALL ( '<DATE TABLE>' ),
+        '<DATE TABLE>'[SequentialDayNumber] > MAX ( '<DATE TABLE>'[SequentialDayNumber] ) - 730
+             && '<DATE TABLE>'[SequentialDayNumber] <= MAX ( '<DATE TABLE>'[SequentialDayNumber] ) - 365
+    )
+)
+
+
+<Measure> YOYTD = [<Measure> YTD] - [<Measure> PYTD]
+
+<Measure> QOQTD = [<Measure> QTD] - [<Measure> PQTD]
+
+<Measure> MOMTD = [<Measure> MTD] - [<Measure> PMTD]
+
+<Measure> AOA = [<Measure> MAT] - [<Measure> PMAT]
+
+
+
+<Measure> YOYTD% = DIVIDE ( [<Measure> YOYTD], [<Measure> PYTD] )
+
+<Measure> QOQTD% = DIVIDE ( [<Measure> QOQTD], [<Measure> PQTD] )
+
+<Measure> MOMTD% = DIVIDE ( [<Measure> MOMTD], [<Measure> PMTD] )
+  
+<Measure> AOA% = DIVIDE ( [<Measure> AOA], [<Measure> PMAT] )
+
+
+
+//----------------------------------------------------------------------
+// semi-additive measures (Inventory or bank balances)
+// https://www.daxpatterns.com/time-patterns/#semi-additive-measures
+//----------------------------------------------------------------------
+
+<Measure> Balance =
+CALCULATE (
+    '<SemiAdditiveFact>'[<SemiAddditiveMeasure>],
+    FILTER (
+        ALL ( '<DATE TABLE>'[Date] ),
+        '<DATE TABLE>'[Date] = MAX ( '<DATE TABLE>'[Date] )
+    )
+)
+
+<Measure> Balance PY =
+CALCULATE (
+    '<SemiAdditiveFact>'[<SemiAddditiveMeasure>],
+    FILTER (
+        ALL ( '<DATE TABLE>' ),
+        '<DATE TABLE>'[Date] = MAX ( '<DATE TABLE>'[PY Date] )
+    )
+)
+ 
+<Measure> Balance PQ =
+CALCULATE (
+    '<SemiAdditiveFact>'[<SemiAddditiveMeasure>],
+    FILTER (
+        ALL ( '<DATE TABLE>' ),
+        '<DATE TABLE>'[Date] = MAX ( '<DATE TABLE>'[PQ Date] )
+    )
+)
+
+//----------------------------------------------------------------------
+// ABC Classification - static segmentation (ABC/Pareto) analysis
+// https://www.daxpatterns.com/abc-classification/
+//----------------------------------------------------------------------
+// -- Calculated columns:
+//
+// [ProductSales] =
+// CALCULATE ( [Sales Amount] )
+ 
+// [ProductPercentage] =
+// CALCULATE (
+//     [Sales Amount],
+//     ALL ( Products ),
+//     Products[ProductSales] >= EARLIER ( Products[ProductSales] )
+// )
+//     / CALCULATE ( [Sales Amount], ALL ( Products ) )
+ 
+// [ABC Product] =
+// SWITCH (
+//     TRUE (),
+//     Products[ProductPercentage] <= 0.7, "A",
+//     Products[ProductPercentage] <= 0.9, "B",
+//     "C"
+// )
+
+//base measure
+[<EntityMeasure>] =
+CALCULATE ( SUM(<measure>) )
+ 
+[CumulatedPercentage] =
+CALCULATE (
+    SUM(<measure>),
+    ALL ( <granularity_table> ),
+    <granularity_table>[<EntityMeasure>]
+        >= EARLIER ( <granularity_table>[<EntityMeasure>] )
+)
+    / CALCULATE (  SUM(<measure>), ALL ( <granularity_table> ) )
+ 
+[ABC Class] =
+SWITCH (
+    TRUE (),
+    <granularity_table>[CumulatedPercentage] <= 0.7, "A",
+    <granularity_table>[CumulatedPercentage] <= 0.9, "B",
+    "C"
+)
+
+
+//----------------------------------------------------------------------
+// ABC Classification - Dynamic segmentation (ABC/Pareto) analysis
+// https://www.daxpatterns.com/abc-classification-dynamic/
+//----------------------------------------------------------------------
+// Requires an ABC boundary [Classifications] table
+//  Base Measure:
+<segmentation_measure> =
+SUM ( '<fact_table>'[<value_column>] )
+
+// You add a table () that defines classes and boundaries. You have seen an example of this table in Figure 2. This table contains three columns:
+
+// <class>: name of the segment (usually A, B, and C).
+// <lower_boundary>: the lower boundary of the segment in percent (0.7 means 70%).
+// <upper_boundary>: the upper boundary of the segment in percent (0.9 means 90%).
+// You create the following measures to calculate the values of the 
+// boundaries for the currently selected segment:
+
+[MinLowerBoundary] =
+MIN ( <lower_boundary> )
+
+[MaxUpperBoundary] = 
+MAX ( <upper_boundary> )
+
+<measure ABC> =
+CALCULATE (
+    <segmentation measure>,
+    VALUES ( <business_key_column> ),
+    FILTER (
+        CALCULATETABLE (
+            ADDCOLUMNS (
+                ADDCOLUMNS (
+                    VALUES ( <business_key_column> )
+                    "OuterValue", <segmentation_measure>
+                ),
+                "CumulatedValuePercentage", DIVIDE (
+                    SUMX (
+                        FILTER (
+                            ADDCOLUMNS (
+                                VALUES ( <business_key_column> ),
+                                "InnerValue", <segmentation_measure>
+                            ),
+                            [InnerValue] >= [OuterValue]
+                        ),
+                        [InnerValue]
+                    ),
+                    CALCULATE (
+                        <segmentation_measure>, 
+                        VALUES ( <business_key_column> )
+                    )
+                )
+            ),
+            ALL ( <item_table> )
+        ),
+        [CumulatedValuePercentage] > [MinLowerBoundary]
+            && [CumulatedValuePercentage] <= [MaxUpperBoundary]
+    )
+)
+
+//variation: Dynamic Classification on Page-Filter Level
+
+Sales Amount ABC wPageFilter =
+CALCULATE (
+    <classification_measure>,
+    VALUES ( <business_key_column> ),
+    FILTER (
+        CALCULATETABLE (
+            ADDCOLUMNS (
+                ADDCOLUMNS (
+                    VALUES ( <business_key_column> )
+                    "OuterValue", <segmentation_measure>
+                ),
+                "CumulatedSalesPercentage", DIVIDE (
+                    SUMX (
+                        FILTER (
+                            ADDCOLUMNS (
+                                VALUES ( <business_key_column> ),
+                                "InnerValue", <segmentation_measure>
+                            ),
+                            [InnerValue] >= [OuterValue]
+                        ),
+                        [InnerValue]
+                    ),
+                    CALCULATE (
+                        <segmentation_measure>, 
+                        VALUES ( <business_key_column> )
+                    )
+                )
+            ),
+            ALL ( <item_table> ),
+            ALLSELECTED ( )
+        ),
+        [CumulatedSalesPercentage] > [MinLowerBoundary]
+            && [CumulatedSalesPercentage] <= [MaxUpperBoundary]
+    )
+)
+
+//variation: Dynamic Classification within Groups
+
+Sales Amount ABC wGroup =
+CALCULATE (
+    <segmentation_measure>,
+    VALUES ( <business_key_column> ),
+    FILTER (
+        CALCULATETABLE (
+            ADDCOLUMNS (
+                ADDCOLUMNS (
+                    VALUES ( <business_key_column> )
+                    "OuterValue", <segmentation_measure>
+                ),
+                "CumulatedSalesPercentage", DIVIDE (
+                    SUMX (
+                        FILTER (
+                            ADDCOLUMNS (
+                                VALUES ( <business_key_column> ),
+                                "InnerValue", <segmentation_measure>
+                            ),
+                            [InnerValue] >= [OuterValue]
+                        ),
+                        [InnerValue]
+                    ),
+                    CALCULATE (
+                        <segmentation_measure>, 
+                        VALUES ( <business_key_column> )
+                    )
+                )
+            ),
+            ALLEXCEPT ( <item_table>, <group_column> )
+        ),
+        [CumulatedSalesPercentage] > [MinLowerBoundary]
+            && [CumulatedSalesPercentage] <= [MaxUpperBoundary]
+    )
+)
+
+//Variation: Fix filter value, for example on high-end products
+
+Sales Amount ABC wFixedFilter :=
+CALCULATE (
+    <segmentation_measure>,
+    VALUES ( <business_key_column> ),
+    FILTER (
+        CALCULATETABLE (
+            ADDCOLUMNS (
+                ADDCOLUMNS (
+                    VALUES ( <business_key_column> )
+                    "OuterValue", <segmentation_measure>
+                ),
+                "CumulatedSalesPercentage", DIVIDE (
+                    SUMX (
+                        FILTER (
+                            ADDCOLUMNS (
+                                VALUES ( <business_key_column> ),
+                                "InnerValue", <segmentation_measure>
+                            ),
+                            [InnerValue] >= [OuterValue]
+                        ),
+                        [InnerValue]
+                    ),
+                    CALCULATE (
+                        <segmentation_measure>, 
+                        VALUES ( <business_key_column> )
+                    )
+                )
+            ),
+            ALL ( <item_table> ),
+            <filter_column> >= <filter_value>
+        ),
+        [CumulatedSalesPercentage] > [MinLowerBoundary]
+            && [CumulatedSalesPercentage] <= [MaxUpperBoundary]
+    )
+)
+
+//----------------------------------------------------------------------
+// Statistical Patterns - Moving Averages and the like
+// https://www.daxpatterns.com/statistical-patterns/
+//----------------------------------------------------------------------
+//Note, there are improved ways to do this with newer versions of DAX
+
+// Moving Average
+// <number_of_days> is the number of days for the moving average.
+// <date_column> is the date column of the date table if you have one, or the date column of the table containing values if there is no separate date table.
+// <measure> is the measure to compute as the moving average.
+
+Moving AverageX <number_of_days> Days=
+AVERAGEX (
+    FILTER (
+        ALL ( <date_column> ),
+        <date_column> > ( MAX ( <date_column> ) - <number_of_days> )
+            && <date_column> <= MAX ( <date_column> )
+    ),
+    <measure>
+)
+
+// Alternate for model with no standard date table
+
+Moving Average <number_of_days> Days=
+CALCULATE (
+    IF (
+        COUNT ( <date_column> ) >= <number_of_days>,
+        SUM ( Sales[Amount] ) / COUNT ( <date_column> )
+    ),
+    FILTER (
+        ALL ( <date_column> ),
+        <date_column> > ( MAX ( <date_column> ) - <number_of_days> )
+            && <date_column> <= MAX ( <date_column> )
+    )
+)
+
+// Variance
+
+// Use standard DAX functions to calculate the variance of a set of values.
+
+// VAR.S: returns the variance of values in a column representing a sample population.
+// VAR.P: returns the variance of values in a column representing the entire population.
+// VARX.S: returns the variance of an expression evaluated over a table representing a sample population.
+// VARX.P: returns the variance of an expression evaluated over a table representing the entire population.
+ 
+// Standard Deviation
+// You can use standard DAX functions to calculate the standard deviation of a set of values.
+
+// STDEV.S: returns the standard deviation of values in a column representing a sample population.
+// STDEV.P: returns the standard deviation of values in a column representing the entire population.
+// STDEVX.S: returns the standard deviation of an expression evaluated over a table representing a sample population.
+// STDEVX.P: returns the standard deviation of an expression evaluated over a table representing the entire population.
+
+// Median - 50th percentile
+
+Median =
+(
+    MINX (
+        FILTER (
+            VALUES ( <value_column> ),
+            CALCULATE (
+                COUNT ( <value_column> ),
+                <value_column>
+                    <= EARLIER ( <value_column> )
+            )
+                > COUNT ( <value_column> ) / 2
+        ),
+        <value_column>
+    )
+        + MINX (
+            FILTER (
+                VALUES ( <value_column> ),
+                CALCULATE (
+                    COUNT ( <value_column> ),
+                    <value_column>
+                        <= EARLIER ( <value_column> )
+                )
+                    > ( COUNT ( <value_column> ) - 1 ) / 2
+            ),
+            <value_column>
+        )
+) / 2
+
+
+//MedianX
+
+// <granularity_table> is the table that defines the granularity of the calculation. For example, it could be the Date table if you want to calculate the median of a measure calculated at the day level, or it could be VALUES ( ‘Date'[YearMonth] ) if you want to calculate the median of a measure calculated at the month level.
+// <measure> is the measure to compute for each row of <granularity_table> for the median calculation.
+// <measure_table> is the table containing data used by <measure>. For example, if the <granularity_table> is a dimension such as ‘Date’, then the <measure_table> will be ‘Internet Sales’ containing the Internet Sales Amount column summed by the Internet Total Sales measure.
+
+MedianX =
+(
+    MINX (
+        TOPN (
+            COUNTROWS ( CALCULATETABLE ( <granularity_table>, <measure_table> ) ) / 2,
+            CALCULATETABLE ( <granularity_table>, <measure_table> ),
+            <measure>
+            0
+        ),
+        <measure>
+    )
+        + MINX (
+            TOPN (
+                ( COUNTROWS ( CALCULATETABLE ( <granularity_table>, <measure_table> ) ) + 1 
+                ) / 2,
+                CALCULATETABLE ( <granularity_table>, <measure_table> ),
+                <measure>,
+                0
+            ),
+            <measure>
+        )
+) / 2
+
+
+// Mode - same as MODE.SNGL Excel function
+// https://www.daxpatterns.com/statistical-patterns/#mode
+
+Mode =
+MINX (
+    TOPN (
+        1,
+        ADDCOLUMNS (
+            VALUES ( '<FactTable>'[<Measure>] ),
+            "Frequency", CALCULATE ( COUNT ( '<FactTable>'[<Measure>] ) )
+        ),
+        [Frequency],
+        0
+    ),
+    '<FactTable>'[<Measure>]
+)
+
+
+//Percentile
+// See https://www.daxpatterns.com/statistical-patterns/#percentile23
+// Thinking there is a way to leverage DAX variables to accomplish this in a simpler way.
+
+
+// Cumulative Total
+// https://www.daxpatterns.com/cumulative-total/
+
+Cumulative <Measure> =
+IF (
+    MIN ( '<DATE TABLE>'[DateKey] )
+        <= CALCULATE ( MAX ( ='<Transaction Table>'[DateKey] ), 
+            ALL ( '<Transaction Table>' ) ),
+    CALCULATE (
+        SUM ( '<Transaction Table>'[<Measure>] ),
+        FILTER (
+            ALL ( '<DATE TABLE>'[Date] ),
+            '<DATE TABLE>'[Date] <= MAX ( '<DATE TABLE>'[Date] )
+        )
+    )
+)
+ 
+Cumulative <Measure> Unchecked =
+CALCULATE (
+    SUM ( '<Transaction Table>'[<Measure>] ),
+    FILTER (
+        ALL ( '<DATE TABLE>'[Date] ),
+        '<DATE TABLE>'[Date] <= MAX ( '<DATE TABLE>'[Date] )
+    )
+)
+
+// Distinct Count
+// https://www.daxpatterns.com/distinct-count/
+
+Unique <DimensionAttribute> =
+CALCULATE (
+    DISTINCTCOUNT ( '<Dimension table>'[<DimensionAttribute>] ),
+    '<FactTable>'
+)
+
+
+//---------------------------------------------------------------
+//Moving Average
+//---------------------------------------------------------------
+
+<Measure> 12M = CALCULATE (
+    [<Measure>],
+    DATESBETWEEN (
+        '<DATE TABLE>'[Date],
+        NEXTDAY ( SAMEPERIODLASTYEAR ( LASTDATE ( '<DATE TABLE>'[Date] ) ) ),
+        LASTDATE ( '<DATE TABLE>'[Date] )
+    )
+)
+
+<Measure> Months12M = CALCULATE (
+    CALCULATE ( COUNTROWS ( VALUES ( '<DATE TABLE>'[Month Abbv] ) ), 'FactTable' ),
+    DATESBETWEEN (
+        '<DATE TABLE>'[Date],
+        NEXTDAY ( SAMEPERIODLASTYEAR (LASTDATE ( '<DATE TABLE>'[Date] ) ) ),
+        LASTDATE ( '<DATE TABLE>'[Date] )
+    )
+)
+
+//finally! one that works
+//https://javierguillen.wordpress.com/2011/09/13/calculating-moving-averages-in-powerpivot-dax/
+Sales 12 MMA = 
+IF(COUNTROWS(VALUES( '<DATE TABLE>'[Month])) = 1, 
+    CALCULATE( 
+SUM( '<Transaction Table>'[<Measure>] ) /  COUNTROWS(  VALUES (  '<DATE TABLE>'[Month] ) )  , 
+            DATESBETWEEN( 
+                 '<DATE TABLE>'[FullDateKey], 
+                FIRSTDATE(PARALLELPERIOD( '<DATE TABLE>'[FullDateKey], -11, MONTH)), 
+                LASTDATE(PARALLELPERIOD( '<DATE TABLE>'[FullDateKey], 0, MONTH)) 
+            ), ALL( '<DATE TABLE>') 
+    ) 
+)
+
+Sales 3 MMA = 
+IF(COUNTROWS(VALUES( '<DATE TABLE>'[Month])) = 1, 
+    CALCULATE( 
+SUM( '<Transaction Table>'[<Measure>] ) /  COUNTROWS(  VALUES (  '<DATE TABLE>'[Month] ) )  , 
+            DATESBETWEEN( 
+                 '<DATE TABLE>'[FullDateKey], 
+                FIRSTDATE(PARALLELPERIOD( '<DATE TABLE>'[FullDateKey], -2, MONTH)), 
+                LASTDATE(PARALLELPERIOD( '<DATE TABLE>'[FullDateKey], 0, MONTH)) 
+            ), ALL( '<DATE TABLE>') 
+    ) 
+)
+
+//to create a 3 month version of this would involve figuring out a different table filter 
+// to replace datesbetween function
+//-------------------------------------------------------
+
+<Measure> (30d avg) =
+AVERAGEX (
+    DATESINPERIOD ( '<DATE TABLE>'[Date], LASTDATE ( '<DATE TABLE>'[Date] ), -30, DAY ),
+    ),
+    [<Measure>] 
+)
+
+<Measure> (90d avg) =
+AVERAGEX (
+    DATESINPERIOD ( '<DATE TABLE>'[Date], LASTDATE ( '<DATE TABLE>'[Date] ), -90, DAY ),
+    ),
+    [<Measure>] 
+)
+
+//look good, but do not appear to work. Tracks to actual total intead of an average.
+12 MMA <Measure> =
+AVERAGEX(
+     FILTER(
+           ALL('<DATE TABLE>'[YearMonthNumber]),
+                '<DATE TABLE>'[YearMonthNumber] > (MAX('<DATE TABLE>'[YearMonthNumber]) -12)
+                    && '<DATE TABLE>'[YearMonthNumber] <= MAX('<DATE TABLE>'[YearMonthNumber])
+                ),
+      [<Measure>]
+)
+
+3 MMA <Measure> =
+AVERAGEX(
+     FILTER(
+           ALL('<DATE TABLE>'[YearMonthNumber]),
+                '<DATE TABLE>'[YearMonthNumber] > (MAX('<DATE TABLE>'[YearMonthNumber]) -3)
+                    && '<DATE TABLE>'[YearMonthNumber] <= MAX('<DATE TABLE>'[YearMonthNumber])
+                ),
+      [<Measure>]
+)
+
