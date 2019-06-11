@@ -5,6 +5,8 @@ Prensenter: Clayton Groom
 Twitter: @sqlmonger
 
 https://github.com/SQLMonger/Presentations
+httP://sqlmonger.com
+
 
 Resources:
 https://docs.microsoft.com/en-us/sql/relational-databases/graphs/sql-graph-architecture
@@ -34,6 +36,8 @@ CREATE TABLE [graph].[DBObjects]
 )
 AS NODE; --only difference from defining a normal table
 GO
+
+select * from graph.dbobjects
 
 --Let's get some data into our table
 
@@ -339,9 +343,9 @@ EXEC sp_help '[graph].[ForeignKeys]'
 GO
 
 CREATE OR ALTER VIEW [graph].[ForeignKeys_vw]
-AS SELECT [$edge_id_7C8F1F30B84140E1A2CECB3A23BD768E] AS [EdgeID]
-        , [$from_id_A8D245E43F344FC68201B4E292C4E7F1] AS [FromID]
-        , [$to_id_209A3C8ED7BA4BB087CFAEB84E07C10A] AS [ToID]
+AS SELECT $edge_id AS [EdgeID]
+        , $from_id AS [FromID]
+        , $to_id AS [ToID]
         , [ConstraintName]
         , [ConstraintColumns]
    FROM [graph].[ForeignKeys];
@@ -362,41 +366,15 @@ SELECT *
 FROM [graph].[DBObjects_vw];
 
 
-SELECT *
+SELECT [EdgeID]
+        , [FromID]
+        , [ToID]
+        , [ConstraintName]
+        , [ConstraintColumns]
 FROM [graph].[ForeignKeys_vw];
 
-select * from [graph].[ForeignKeys_vw]
+
 GO
-
-/*
-M script
-
-"Parent Objects" source:
-
-let
-    Source = Sql.Database("localhost\sql2019", "AdventureWorksDW", [Query="SELECT *  FROM [graph].[DBObjects_vw]", CreateNavigationProperties=false]),
-    #"Renamed Columns" = Table.RenameColumns(Source,{{"ObjectName", "Parent Object Name"}, {"ObjectSchema", "Parent Object Schema"}, {"ObjectID", "Parent ObjectID"}, {"NodeID", "Parent NodeID"}})
-in
-    #"Renamed Columns"
-
-
-"Child Objects" source:
-
-let
-    Source = Sql.Database("localhost\sql2019", "AdventureWorksDW", [Query="SELECT * FROM [graph].[DBObjects_vw]", CreateNavigationProperties=false])
-in
-    Source
-
-"Realtionships" source:
-
-let
-    Source = Sql.Database("localhost\SQL2019", "AdventureWorksDW", [Query="select * from [graph].[ForeignKeys_vw]", CreateNavigationProperties=false])
-in
-    Source
-
-
-
-*/
 
 
 -- Extend the model by adding a node table for reports
@@ -432,7 +410,7 @@ CREATE TABLE [graph].[ReportUses] ([UsedFor] nvarchar(30))
 AS EDGE;
 go
 
-INSERT [graph].[ReportUses] ($from_id, $to_id, [UsedFor])
+INSERT [graph].[ReportUses] ( $from_id, $to_id, [UsedFor])
 VALUES 
 	((SELECT $node_id FROM [graph].[Report] where ReportName = 'Sales Report')
 	,(SELECT $node_id FROM [graph].[DBObjects] where ObjectName = 'FactInternetSales')
@@ -455,7 +433,7 @@ VALUES
 	,'Parameter Values'
 	)
 	,((SELECT $node_id FROM [graph].[Report] where ReportName = 'Sales Report')
-	,(SELECT $node_id FROM [graph].[DBObjects] where ObjectName = 'DimSalesTerritory')
+	,(SELECT $node_id FROM [graph].[DBObjects] where ObjectName = 'DimProduct')
 	,'Parameter Values'
 	)
 go
@@ -486,9 +464,9 @@ EXEC sp_help '[graph].[ReportUses]'
 GO
 
 CREATE OR ALTER VIEW [graph].[ReportUses_vw]
-AS SELECT [$edge_id_7318529C7BCC4DBFA855FE2CD5B05AE9] AS [EdgeID]
-        , [$from_id_5EA07E806B60478086FB88F024CD9786] AS [FromID]
-        , [$to_id_76A2F483B94443BBB1B8B138E007C5A0] AS [ToID]
+AS SELECT $edge_id AS [EdgeID]
+        , $from_id AS [FromID]
+        , $to_id AS [ToID]
         , [UsedFor]
    FROM [graph].[ReportUses];
 
@@ -497,7 +475,11 @@ GO
 EXEC sp_help '[graph].[ReportUses_vw]'
 go
 
-select * from [graph].[ReportUses_vw]
+select [EdgeID]
+        , [FromID]
+        , [ToID]
+        , [UsedFor] 
+from [graph].[ReportUses_vw]
 go
 
 
